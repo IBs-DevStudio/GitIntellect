@@ -2,14 +2,16 @@ import { GithubRepoLoader } from "@langchain/community/document_loaders/web/gith
 import { Document } from "@langchain/core/documents";
 import { summariseCode, generateEmbedding } from "./gemini";
 import { db } from "@/server/db";
+import { env } from "@/env";
 
 export const loadGithubRepo = async (
   githubUrl: string,
   githubToken?: string,
 ) => {
+  const token = githubToken || env.GITHUB_TOKEN;
   try {
     const loader = new GithubRepoLoader(githubUrl, {
-      accessToken: githubToken || "",
+      accessToken: token,
       branch: "main",
       ignoreFiles: [
         "package-lock.json",
@@ -25,7 +27,7 @@ export const loadGithubRepo = async (
     return filterDocs(docs);
   } catch {
     const loader = new GithubRepoLoader(githubUrl, {
-      accessToken: githubToken || "",
+      accessToken: token,
       branch: "master",
       ignoreFiles: [
         "package-lock.json",

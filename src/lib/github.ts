@@ -3,10 +3,12 @@ import { log } from "node:console";
 import { Octokit } from "octokit";
 import axios from "axios";
 import { aiSummariseCommit } from "./gemini";
+import { env } from "@/env";
 
 export const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
+  auth: env.GITHUB_TOKEN,
 });
+
 
 const githubUrl = "https://github.com/IBs-DevStudio/DocuDialog.git";
 

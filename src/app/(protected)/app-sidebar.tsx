@@ -100,9 +100,9 @@ export function AppSidebar() {
                                                 setProjectId(project.id)
                                             }}>
                                                 <div className={cn(
-                                                    'rounded-sm border size-6 flex items-center justify-center text-sm bg-white text-primary',
+                                                    'rounded-sm border size-6 flex items-center cursor-pointer justify-center text-sm bg-white text-primary',
                                                     {
-                                                        "bg-primary text-white":project.id===projectId
+                                                        "bg-primary cursor-pointer text-white":project.id===projectId
                                                     }
                                                 )}>
 
@@ -120,9 +120,9 @@ export function AppSidebar() {
                             <div className="h-2"></div>
                             {open && (
                                 <SidebarMenuItem>
-                                    <Link href="/create">
+                                    <Link href="/create" >
 
-                                        <Button variant={"outline"} >
+                                        <Button variant={"outline"} className="cursor-pointer" >
                                             <Plus />
                                             Create Project</Button>
                                     </Link>
