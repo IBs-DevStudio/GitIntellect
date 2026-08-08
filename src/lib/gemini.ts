@@ -13,7 +13,7 @@ export const aiSummariseCommit = async (diff: string) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "stepfun/step-3.5-flash:free",
+        model: "nvidia/nemotron-3-ultra-550b-a55b:free",
         messages: [
           {
             role: "user",
@@ -46,7 +46,10 @@ Details:
 
   const data = await response.json();
   console.log("RAW:", JSON.stringify(data).slice(0, 200))
-  if (!response.ok) return "Request failed.";
+ if (!response.ok) {
+    console.error("OpenRouter error:", response.status, JSON.stringify(data));
+    return "Request failed.";
+  }
   if (!data.choices?.length) return "No summary generated.";
   return data.choices[0].message.content;
 };

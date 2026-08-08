@@ -1,132 +1,150 @@
 import { GithubRepoLoader } from "@langchain/community/document_loaders/web/github";
-import { Document } from "@langchain/core/documents";
-import { summariseCode, generateEmbedding } from "./gemini";
-import { db } from "@/server/db";
+import pLimit from 'p-limit'
 import { env } from "@/env";
+import { generateEmbedding, summariseCode } from "./gemini";
+import { exit } from "process";
+import { db } from "@/server/db";
+import { Octokit } from "octokit";
+const getFileCount = async (path: string, octokit: Octokit, githubOwner: string, githubRepo: string, acc: number = 0) => {
+    const { data } = await octokit.rest.repos.getContent({
+        owner: githubOwner,
+        repo: githubRepo,
+        path: path
+    })
 
-export const loadGithubRepo = async (
-  githubUrl: string,
-  githubToken?: string,
-) => {
-  const token = githubToken || env.GITHUB_TOKEN;
-  try {
-    const loader = new GithubRepoLoader(githubUrl, {
-      accessToken: token,
-      branch: "main",
-      ignoreFiles: [
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-      ],
-      recursive: true,
-      unknown: "warn",
-      maxConcurrency: 5,
-    });
-    const docs = await loader.load();
-    return filterDocs(docs);
-  } catch {
-    const loader = new GithubRepoLoader(githubUrl, {
-      accessToken: token,
-      branch: "master",
-      ignoreFiles: [
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-      ],
-      recursive: true,
-      unknown: "warn",
-      maxConcurrency: 5,
-    });
-    const docs = await loader.load();
-    return filterDocs(docs);
-  }
-};
+    if (!Array.isArray(data) && data.type === 'file') {
+        return acc + 1
+    }
 
-const filterDocs = (docs: Document[]) => {
-  return docs.filter((doc) => {
-    const file = doc.metadata.source;
-    return (
-      !file.endsWith(".svg") &&
-      !file.endsWith(".png") &&
-      !file.endsWith(".jpg") &&
-      !file.endsWith(".jpeg") &&
-      !file.endsWith(".ico") &&
-      !file.endsWith(".md") &&
-      !file.endsWith(".mdx") &&
-      !file.endsWith(".json") &&
-      !file.endsWith(".css") &&
-      !file.endsWith(".lock") &&
-      !file.endsWith(".sum") &&
-      !file.endsWith(".proto") &&
-      !file.endsWith(".yaml") &&
-      !file.endsWith(".yml") &&
-      !file.endsWith(".toml") &&
-      !file.endsWith(".sql") &&
-      !file.endsWith(".mod") &&
-      !file.endsWith(".pb.go") &&
-      !file.endsWith(".tpl") &&
-      !file.endsWith(".txt")
+    if (Array.isArray(data)) {
+        let fileCount = 0
+        const directories: string[] = []
+
+        // Count files and collect directories in current level
+        for (const item of data) {
+            if (item.type === 'dir') {
+                directories.push(item.path)
+            } else {
+                fileCount += 1
+            }
+        }
+
+        // Process all directories at this level in parallel
+        if (directories.length > 0) {
+            const directoryCounts = await Promise.all(
+                directories.map(dirPath =>
+                    getFileCount(dirPath, octokit, githubOwner, githubRepo, 0)
+                )
+            )
+            fileCount += directoryCounts.reduce((sum, count) => sum + count, 0)
+        }
+
+        return acc + fileCount
+    }
+
+    return acc
+}
+
+export const checkCredits = async (githubUrl: string, githubToken?: string) => {
+    const octokit = new Octokit({
+       auth: githubToken || env.GITHUB_TOKEN,
+    });
+    const githubOwner = githubUrl.split('/')[3]
+    const githubRepo = githubUrl.split('/')[4]
+    if (!githubOwner || !githubRepo) return 0
+    const fileCount = await getFileCount('', octokit, githubOwner, githubRepo, 0)
+    return fileCount
+}
+
+export const loadGithubRepo = async (githubUrl: string, githubToken?: string) => {
+    const loader = new GithubRepoLoader(
+        githubUrl,
+        {
+            branch: "main",
+            ignoreFiles: ['package-lock.json', 'bun.lockb'],
+            recursive: true,
+            // recursive: false,
+            accessToken: githubToken || env.GITHUB_TOKEN,
+            unknown: "warn",
+            maxConcurrency: 5, // Defaults to 2
+        }
     );
-  });
+    const docs = await loader.load();
+    return docs
 };
 
-export const indexGithubRepo = async (
-  projectId: string,
-  githubUrl: string,
-  githubToken?: string,
-) => {
-  console.log("TOKEN RECEIVED IN LOADER:", githubToken);
-  const docs = await loadGithubRepo(githubUrl, githubToken);
-  console.log("Docs after filtering:", docs.length);
-  const allEmbeddings = await generateEmbeddings(docs);
-  console.log(
-    "Total embeddings generated:",
-    allEmbeddings.filter((e) => e !== null).length,
-  );
-  await Promise.allSettled(
-    allEmbeddings.map(async (embedding) => {
-      if (!embedding) return;
-      console.log("saving embedding for:", embedding.fileName);
-      const id = crypto.randomUUID();
-      await db.$executeRaw`
-        INSERT INTO "SourceCodeEmbedding" ("id", "sourceCode", "fileName", "summary", "projectId")
-        VALUES (${id}, ${embedding.sourceCode}, ${embedding.fileName}, ${embedding.summary}, ${projectId})
-      `;
-      await db.$executeRaw`
-        UPDATE "SourceCodeEmbedding"
-        SET "summaryEmbedding" = ${embedding.embedding}::vector
-        WHERE "id" = ${id}
-      `;
-    }),
-  );
-};
+export const indexGithubRepo = async (projectId: string, githubUrl: string, githubToken?: string) => {
+    const docs = await loadGithubRepo(githubUrl, githubToken);
+    const allEmbeddings = await generateEmbeddings(docs)
+    const limit = pLimit(10);
+    await Promise.allSettled(
+        allEmbeddings.map((embedding, index) =>
+            limit(async () => {
+                console.log(`processing ${index} of ${allEmbeddings.length}`);
+                if (!embedding) throw new Error("embedding is null");
 
-const generateEmbeddings = async (docs: Document[]) => {
-  const results: any[] = [];
-  for (let i = 0; i < docs.length; i += 10) {
-    const batch = docs.slice(i, i + 10);
-    const batchResults = await Promise.all(
-      batch.map(async (doc) => {
+                // First, upsert the basic data
+                const sourceCodeEmbedding = await db.sourceCodeEmbedding.upsert({
+                    where: {
+                        projectId_fileName: {
+                            projectId,
+                            fileName: embedding.fileName
+                        }
+                    },
+                    update: {
+                        summary: embedding.summary,
+                        sourceCode: embedding.sourceCode,
+                    },
+                    create: {
+                        summary: embedding.summary,
+                        sourceCode: embedding.sourceCode,
+                        fileName: embedding.fileName,
+                        projectId,
+                    }
+                });
+
+                // Then, update the summaryEmbedding using raw SQL
+                await db.$executeRaw`
+                UPDATE "SourceCodeEmbedding"
+                SET "summaryEmbedding" = ${embedding.embeddings}::vector
+                WHERE id = ${sourceCodeEmbedding.id}
+            `;
+            })
+        )
+    )
+}
+
+
+
+async function generateEmbeddings(docs: Awaited<ReturnType<typeof loadGithubRepo>>) {
+    return await Promise.all(docs.map(async (doc) => {
         const summary = await summariseCode(doc);
-        console.log(
-          "summary for",
-          doc.metadata.source,
-          ":",
-          summary?.slice(0, 80),
-        );
-        if (!summary || summary.trim() === "") return null;
-        const embedding = await generateEmbedding(summary);
+        if (!summary) return null;
+        const embeddings = await generateEmbedding(summary);
         return {
-          summary,
-          embedding,
-          sourceCode: JSON.parse(JSON.stringify(doc.pageContent)),
-          fileName: doc.metadata.source,
+            summary,
+            embeddings,
+            sourceCode: JSON.parse(JSON.stringify(doc.pageContent)),
+            fileName: doc.metadata.source,
         };
-      }),
-    );
-    results.push(...batchResults);
-  }
-  return results;
-};
+    }));
+}
+// console.log("done")
+
+// const query = 'what env is needed for this project?'
+
+
+// const embedding = await getEmbeddings(query)
+// const vectorQuery = `[${embedding.join(',')}]`
+
+// const result = await db.$queryRaw`
+//   SELECT
+//     id,
+//     summary,
+//     1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) as similarity
+//   FROM "SourceCodeEmbedding"
+//   where 1 - ("summaryEmbedding" <=> ${vectorQuery}::vector) > .5
+//   ORDER BY  similarity DESC
+//   LIMIT 10;
+// `
+// console.log(result)

@@ -1,59 +1,102 @@
 'use client'
-
-import { Button } from '@/components/ui/button'
+import MDEditor from '@uiw/react-md-editor';
+import { MarkdownPreviewRef } from '@uiw/react-markdown-preview'
+import React from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
-import useProject from '@/app/hooks/use-project'
-import Image from 'next/image'
-import React, { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { generate } from './action'
+import CodeReferences from './code-references';
+import Image from 'next/image';
+import { DownloadIcon } from 'lucide-react';
+import { api } from '@/trpc/react';
+import useProject from "@/app/hooks/use-project";
+import { toast } from 'sonner';
 
-const AskQuestionCard = () => {
-  const { project } = useProject()
-  const [question, setQuestion] = useState('')
-  const [open, setOpen] = useState(false)
-  const [answer, setAnswer] = useState('')
+type Props = {}
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!question.trim()) return
-    setOpen(true)
-    // TODO: call tRPC Q&A endpoint
-  }
+const AskQuestionCard = (props: Props) => {
+    const [open, setOpen] = React.useState(false)
+    const [question, setQuestion] = React.useState('')
+    const [isLoading, setIsLoading] = React.useState(false)
+    const [answer, setAnswer] = React.useState('')
+    const saveAnswer = api.question.saveAnswer.useMutation()
+    const { projectId } = useProject()
 
-  return (
-    <>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              <Image src='/logo-1.png' alt='dionysus' width={40} height={48} />
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{answer}</p>
-        </DialogContent>
-      </Dialog>
+    const answerRef = React.useRef<MarkdownPreviewRef>(null)
+    const [filesReferenced, setFilesReferenced] = React.useState<Awaited<ReturnType<typeof generate>>['filesReferenced']>([])
 
-      <Card className='relative col-span-3'>
-        <CardHeader>
-          <CardTitle>Ask a question</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit}>
-            <Textarea
-              placeholder='Which file should I edit to change the home page?'
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-            <div className="h-4"></div>
-            <Button type='submit'>
-              Ask Intellect!
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </>
-  )
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        if (!projectId) return
+        setAnswer('')
+        e.preventDefault()
+        setIsLoading(true)
+        const { output, filesReferenced } = await generate(question, projectId)
+        setOpen(true)
+        setFilesReferenced(filesReferenced)
+        setAnswer(output)
+        setIsLoading(false)
+    }
+
+    return (
+        <>
+            <Dialog open={open} onOpenChange={(open) => {
+                setOpen(open)
+                if (!open) {
+                    setQuestion('')
+                }
+            }}>
+                <DialogContent className='sm:max-w-[80vw]'>
+                    <div className="flex items-center gap-2">
+                        <DialogTitle>
+                            <Image src="/logo-1.png" alt="Logo" width={40} height={40} />
+                        </DialogTitle>
+                        <Button isLoading={saveAnswer.isPending || isLoading} variant="outline" onClick={() => {
+                            saveAnswer.mutate({
+                                projectId,
+                                question,
+                                answer,
+                                filesReferenced
+                            }, {
+                                onSuccess: () => {
+                                    toast.success('Answer saved')
+                                },
+                                onError: () => {
+                                    toast.error('Failed to save answer')
+                                }
+                            })
+                        }}>
+                            <DownloadIcon className="w-4 h-4" />
+                            Save Answer</Button>
+                    </div>
+                    <MDEditor.Markdown source={answer} className='max-w-[70vw] !h-full max-h-[40vh] overflow-scroll custom-ref' />
+                    <CodeReferences filesReferenced={filesReferenced} />
+                    <Button onClick={() => setOpen(false)}>Close</Button>
+                </DialogContent>
+            </Dialog>
+            <Card className="relative col-span-3">
+                <CardHeader>
+                    <CardTitle>Ask a question</CardTitle>
+                    <CardDescription>
+                        Dionysus has knowledge of the codebase
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit}>
+                        <Textarea
+                            placeholder="Which file should I edit to change the home page?"
+                            value={question}
+                            onChange={(e) => setQuestion(e.target.value)}
+                        />
+                        <Button isLoading={isLoading} className="mt-4">
+                            Ask Dionysus!
+                        </Button>
+                    </form>
+                </CardContent>
+            </Card>
+        </>
+    )
 }
 
 export default AskQuestionCard

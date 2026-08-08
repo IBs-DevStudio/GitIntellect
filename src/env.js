@@ -12,6 +12,8 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
      GITHUB_TOKEN: z.string().min(1),
+     OPENROUTER_API_KEY: z.string().min(1),
+     GEMINI_API_KEY: z.string().min(1),
   },
 
   /**
@@ -31,6 +33,8 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
      GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**
