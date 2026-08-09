@@ -10,6 +10,10 @@ const openrouter = createOpenRouter({
 });
 
 export async function generate(input: string, projectId: string) {
+  if (!input || input.trim() === '') {
+    return { output: 'Please enter a question.', filesReferenced: [] };
+  }
+   
     const embedding = await generateEmbedding(input);
     const vectorQuery = `[${embedding.join(',')}]`;
 

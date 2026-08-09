@@ -90,6 +90,7 @@ Give a summary no more than 100 words of the code above.`,
 };
 
 export const generateEmbedding = async (summary: string) => {
+  if (!summary || summary.trim() === '') return [];
   const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
   const result = await model.embedContent(summary);
   return result.embedding.values;

@@ -1,11 +1,10 @@
 import React from 'react'
+import QuestionList from './question-list'
 
-const QnA = () => {
-  return (
-    <div>
-        <h1>QnA</h1>
-    </div>
-  )
+const QAPage = () => {
+    return (
+        <QuestionList/>
+    )
 }
 
-export default QnA
+export default QAPage
