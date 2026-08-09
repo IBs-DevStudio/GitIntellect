@@ -9,12 +9,19 @@ import { Button } from '@/components/ui/button'
 import { generate } from './action'
 import CodeReferences from './code-references';
 import Image from 'next/image';
-import { DownloadIcon } from 'lucide-react';
+import { DownloadIcon, Sparkles, Code2, GitBranch, FileSearch } from 'lucide-react';
 import { api } from '@/trpc/react';
 import useProject from "@/app/hooks/use-project";
 import { toast } from 'sonner';
 
 type Props = {}
+
+const SAMPLE_QUESTIONS = [
+    { icon: <FileSearch className="h-4 w-4" />, text: 'Which file should I edit to change the home page?' },
+    { icon: <Code2 className="h-4 w-4" />, text: 'How is authentication handled in this project?' },
+    { icon: <GitBranch className="h-4 w-4" />, text: 'Where is the database schema defined?' },
+    { icon: <Sparkles className="h-4 w-4" />, text: 'How do I add a new API route?' },
+]
 
 const AskQuestionCard = (props: Props) => {
     const [open, setOpen] = React.useState(false)
@@ -43,9 +50,7 @@ const AskQuestionCard = (props: Props) => {
         <>
             <Dialog open={open} onOpenChange={(open) => {
                 setOpen(open)
-                if (!open) {
-                    setQuestion('')
-                }
+                if (!open) setQuestion('')
             }}>
                 <DialogContent className='sm:max-w-[80vw]'>
                     <div className="flex items-center gap-2">
@@ -53,43 +58,54 @@ const AskQuestionCard = (props: Props) => {
                             <Image src="/logo-1.png" alt="Logo" width={40} height={40} />
                         </DialogTitle>
                         <Button isLoading={saveAnswer.isPending || isLoading} variant="outline" onClick={() => {
-                            saveAnswer.mutate({
-                                projectId,
-                                question,
-                                answer,
-                                filesReferenced
-                            }, {
-                                onSuccess: () => {
-                                    toast.success('Answer saved')
-                                },
-                                onError: () => {
-                                    toast.error('Failed to save answer')
-                                }
+                            saveAnswer.mutate({ projectId, question, answer, filesReferenced }, {
+                                onSuccess: () => toast.success('Answer saved'),
+                                onError: () => toast.error('Failed to save answer')
                             })
                         }}>
                             <DownloadIcon className="w-4 h-4" />
-                            Save Answer</Button>
+                            Save Answer
+                        </Button>
                     </div>
                     <MDEditor.Markdown source={answer} className='max-w-[70vw] !h-full max-h-[40vh] overflow-scroll custom-ref' />
                     <CodeReferences filesReferenced={filesReferenced} />
                     <Button onClick={() => setOpen(false)}>Close</Button>
                 </DialogContent>
             </Dialog>
-            <Card className="relative col-span-3">
+
+            <Card className="relative col-span-3 h-full">
                 <CardHeader>
-                    <CardTitle>Ask a question</CardTitle>
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        <CardTitle>Ask a question</CardTitle>
+                    </div>
                     <CardDescription>
-                        Dionysus has knowledge of the codebase
+                        Ask anything about your codebase — Dionysus will find the answer.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit}>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                        {SAMPLE_QUESTIONS.map((q, i) => (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={() => setQuestion(q.text)}
+                                className="flex items-center gap-2 rounded-lg border border-dashed p-2 text-left text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                            >
+                                {q.icon}
+                                <span className="line-clamp-1">{q.text}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <form onSubmit={handleSubmit} className="space-y-3">
                         <Textarea
-                            placeholder="Which file should I edit to change the home page?"
+                            placeholder="Ask anything about your codebase..."
                             value={question}
                             onChange={(e) => setQuestion(e.target.value)}
+                            className="min-h-[100px] resize-none"
                         />
-                        <Button isLoading={isLoading} className="mt-4">
+                        <Button isLoading={isLoading} className="w-full">
+                            <Sparkles className="mr-2 h-4 w-4" />
                             Ask Dionysus!
                         </Button>
                     </form>
